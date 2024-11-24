@@ -88,6 +88,28 @@ General Manager: Ryozo Yamashita
     - [2.2.7 Device Enable to Prevent Conflicts](#227-device-enable-to-prevent-conflicts)
   - [2.3 Slot Configuration in MSX turbo R](#23-slot-configuration-in-msx-turbo-r)
     - [2.3.1 Standardized Slot Configuration at Last!](#231-standardized-slot-configuration-at-last)
+- [3. Basic](#3-basic)
+  - [3.1 Analyzing Kanji BASIC](#31-analyzing-kanji-basic)
+    - [3.1.1 Hardware Required for Kanji BASIC](#311-hardware-required-for-kanji-basic)
+    - [Table 3.1: MSX-JE Built-in Hardware](#table-31-msx-je-built-in-hardware)
+    - [3.1.2 Applications Compatible with MSX-JE](#312-applications-compatible-with-msx-je)
+    - [3.1.3 Explaining How the Kanji Driver Works](#313-explaining-how-the-kanji-driver-works)
+    - [3.1.4 JE-Compatible Hardware \& Software](#314-je-compatible-hardware--software)
+    - [3.1.5 Various Screen Modes Usable with Kanji BASIC](#315-various-screen-modes-usable-with-kanji-basic)
+    - [3.1.6 Kanji Text and Kanji Graphics](#316-kanji-text-and-kanji-graphics)
+    - [3.1.7 Proper Usage of the Kanji Driver](#317-proper-usage-of-the-kanji-driver)
+- [4. V9958 VDP](#4-v9958-vdp)
+  - [4.1 V9958 Register List](#41-v9958-register-list)
+  - [4.2 New Features of V9958](#42-new-features-of-v9958)
+    - [4.2.1 Horizontal Scrolling](#421-horizontal-scrolling)
+    - [4.2.2 Wait Functionality](#422-wait-functionality)
+    - [4.2.3 Commands](#423-commands)
+    - [4.2.4 YJK Format Display](#424-yjk-format-display)
+  - [4.3 V9958 Deprecated Features](#43-v9958-deprecated-features)
+  - [4.4 V9958 Hardware Specifications (Changes)](#44-v9958-hardware-specifications-changes)
+  - [4.5 V9958 and MSX2+](#45-v9958-and-msx2)
+    - [4.5.1 Screen Modes: A Total of 12 Types](#451-screen-modes-a-total-of-12-types)
+    - [4.5.2 Controlling VDP Registers](#452-controlling-vdp-registers)
 
 # 1. MSX turbo R
 
@@ -1710,4 +1732,725 @@ For software developers, the biggest advantage of the standardized slot configur
 
 From the perspective of software creation, the standardization of the slot configuration is far more beneficial than the faster CPU or increased RAM capacity. 
 
-**Long live the turbo R!**
+**Long life to the turbo R!**
+
+# 3. Basic
+
+This chapter is a re-edited version of the "MSX2+ Technical Exploration Team" article published in the April 1989 issue of MSX Magazine.
+
+## 3.1 Analyzing Kanji BASIC
+One of the standout features of MSX2+ and later machines, as well as DOS2, is the enhanced usability of kanji (Japanese characters). Kanji can now be used in BASIC program strings and file names. This chapter provides a report on the features of Kanji BASIC.
+
+### 3.1.1 Hardware Required for Kanji BASIC
+To use Kanji BASIC, you need either an MSX2+ or turbo R machine, or a DOS2 cartridge. Both include the Kanji BASIC ROM. The difference in functionality is that MSX2+ and turbo R can utilize the natural graphic modes SCREEN 10–12 and have built-in kanji ROM.
+
+Another notable example is Sony's Japanese language cartridge, **HBI-J1**, which includes both Kanji BASIC and kanji ROM, allowing an existing MSX2 machine to support kanji.
+
+Both DOS2 and MSX2+/turbo R also feature "single-kanji conversion." This allows you to specify kanji characters one at a time using their "readings" or "JIS codes." However, for longer text input, "phrase conversion" provided by **MSX-JE** can be added. For example, the phrase "きょうはいいおてんきです" (a string of hiragana) can be converted at once to "今日は良いお天気です" (a kanji-kana mixed sentence).
+
+### Table 3.1: MSX-JE Built-in Hardware
+| Manufacturer | Product Name        | Type      | Kanji ROM | SRAM | Notes                          |
+|--------------|---------------------|-----------|-----------|------|--------------------------------|
+| Panasonic    | FS-A1ST (turbo R)   | Built-in  | 1, 2      | Yes  |                                |
+| Panasonic    | FS-A1WSX (MSX2+)    | Built-in  | 1, 2      | Yes  |                                |
+| Panasonic    | FS-A1WX (MSX2+)     | Built-in  | 1, 2      | Yes  |                                |
+| Panasonic    | FS-SR021            | Cartridge | 1, 2      | Yes  | Word processor cartridge for A1WX |
+| Panasonic    | FS-4600F            | MSX2      | 1         | Yes  |                                |
+| Sony         | HB-F1XV (MSX2+)     | Built-in  | 1, 2      | Yes  |                                |
+| Sony         | HB-F1XDJ (MSX2+)    | Built-in  | 1, 2      | Yes  |                                |
+| Sony         | HBI-J1              | Cartridge | 1, 2      | Yes  |                                |
+| HAL Labs     | HAL NOTE            | Cartridge | 1, 2      | Yes  | Includes special OS with disk |
+| ASCII        | MSX-Write           | Cartridge | 1         | No   |                                |
+| ASCII        | MSX-Write J1        | Cartridge | 1, 2      | Yes  |                                |
+
+**Notes:**
+- Kanji ROM: Indicates the inclusion of first-level and second-level kanji ROMs.
+- SRAM: "Yes" indicates that the device uses non-volatile memory for learning results.
+
+### 3.1.2 Applications Compatible with MSX-JE
+MSX-JE is not just a word processor or BASIC extension; it enables phrase conversion functionality across various applications. This shared use of MSX-JE by multiple software programs is economical since kanji ROM and conversion dictionaries are relatively expensive.
+
+Applications marked as **MSX-JE Compatible** adhere to defined specifications, allowing them to work seamlessly with any MSX-JE implementation. However, exceptions exist, such as HAL NOTE, which uses the specialized **HALOS** OS with its combination of cartridges and system disks. These exceptions may not support non-HALOS software.
+
+### 3.1.3 Explaining How the Kanji Driver Works
+The internal workings of kanji handling in computers are briefly explained below. While English and katakana characters can be represented with 1-byte codes (8 bits), kanji requires 2-byte encoding. 
+
+**Example JIS Codes:**
+
+- 亜: `3021H` (First Level)
+- 腕: `4F53H` (First Level)
+- 弐: `5021H` (Second Level)
+- 禽: `737EH` (Second Level)
+
+Although convenient, JIS codes can be cumbersome to process when mixed with other character types. To address this, many personal computers, including MSX, use the **Shift JIS** encoding system. This system simplifies handling mixed English and kanji text and is compatible with operating systems like MS-DOS and OS-9, enabling document exchange between different systems.
+
+Characters represented with 2-byte codes (kanji, full-width alphanumeric, etc.) are collectively referred to as **full-width characters**, while 1-byte characters are **half-width characters**. It is important to distinguish between them, as they are treated as entirely separate entities.
+
+**How the Kanji Driver Operates:**
+
+The Kanji Driver handles kanji input/output functions in MSX2+, turbo R, and DOS2. Its operation is illustrated in **Figure 3.1**:
+1. Full-width kana or romanized text is input from the keyboard.
+2. The input is processed and displayed on the screen.
+3. MSX-JE converts the hiragana into kanji (full-width characters).
+4. The converted kanji codes are passed to the application program via BASIC or DOS.
+
+This setup ensures that the kanji driver can be utilized not only by BASIC or DOS but also by various application programs.
+
+Conversely, when an application program displays characters on the screen, it simply sends the kanji codes to the Kanji Driver.
+
+For application programs, the Kanji Driver appears as an extension of BASIC commands, BIOS calls, or BDOS calls (BIOS-like functionality in DOS for performing input/output operations) that include kanji input/output features. 
+
+![Figure 3.1: Kanji Driver Operation](images/th/3.1.png)
+**Figure 3.1: Kanji Driver Operation**
+
+**Application Program**
+
+  - Inputs kana or romaji.
+  - Uses BASIC commands, BIOS calls, or BDOS calls for kanji functionality.
+  - Displays kanji without directly interacting with the MSX-JE dictionary.
+
+The major advantage of the Kanji Driver is that application programs do not need to handle or manipulate the MSX-JE dictionary themselves. This simplifies development while enabling robust kanji handling capabilities.
+
+### 3.1.4 JE-Compatible Hardware & Software
+
+Below is a summary of MSX-JE-compatible hardware and software released so far:
+
+**Hardware**
+- **Modem Cartridges**
+  - Panasonic FS-CM1
+  - Panasonic FS-CM820
+  - Sony HBI-1200
+  - Canon VM-300
+  - Meisei Electric V-3
+
+- **Modem-Integrated MSX**
+  - Panasonic FS-A1FM
+  - Sony HB-T7, HB-T600
+  - Mitsubishi ML-TS2H
+
+**Software**
+- Sony **Bunsho Sakuzaemon**
+- Sony **Hagaki Kakizaemon**
+- ASCII **MSX-TERM**
+- ASCII **MSX-DOS2 TOOLS**
+- ASCII **MSXView**
+
+### 3.1.5 Various Screen Modes Usable with Kanji BASIC
+
+MSX2+ and turbo R offer multiple complex screen modes for Kanji BASIC. These modes can be configured with:
+
+- In BASIC: `CALL KANJI` and `WIDTH`
+- In DOS2: `KMODE` and `MODE`
+
+For example:
+
+To display a screen with 32 characters × 12 rows, you can use the following commands in **BASIC**:
+
+```basic
+CALL KANJI 0
+WIDTH 32
+```
+
+In **DOS2**, the equivalent commands are:
+
+```text
+KMODE 0
+MODE 32
+```
+
+**Notes on System Language**
+
+If you are using an English version of the system, the Kanji Driver is not loaded by default. You will need to return to BASIC to invoke the Kanji mode.
+
+**Explanation of Table 3.2 Fields**
+
+**Screen Dot Count**
+
+This refers to the number of individual dots displayed on the screen. Kanji characters are represented by combining these dots into patterns.
+
+**Interlaced Display**
+
+For screen modes with 424 vertical dots, the "interlaced" display method is used. This alternates two slightly offset screens to increase the dot density. However, this can cause screen flickering, which may lead to eye strain.
+
+**Kanji Dot Count**
+
+This specifies the number of dots required to display a single Kanji character. Typically, Kanji is displayed using a 16 × 16 dot grid. However, it can be compressed to a 12 × 16 grid to display 40 Kanji characters across a 512-dot-wide screen.
+
+For example:
+- Connecting a **Panasonic modem cartridge** automatically selects the built-in **12 × 12 dot Kanji ROM**.
+
+These details ensure optimized display settings for your specific hardware and screen mode requirements.
+
+**Table 3.2: Kanji BASIC Screen Modes**
+
+| **Screen Dot Count** | **Kanji Dot Count** | **Half-width Characters** | **CALL KANJI / WIDTH Setting** |  
+|-----------------------|---------------------|----------------------------|--------------------------------|  
+| 256 × 192            | 16 × 16            | 32 × 24                   | `CALL KANJI 0 : WIDTH 32`      |  
+| 512 × 212            | 12 × 16            | 40 × 26                   | `CALL KANJI 1 : WIDTH 40`      |  
+| 256 × 212            | 16 × 16            | 32 × 26                   | `CALL KANJI 0 : WIDTH 32`      |  
+| 512 × 424 (Interlaced)| 12 × 16            | 40 × 53                   | `CALL KANJI 1 : WIDTH 40`      |  
+| 256 × 424 (Interlaced)| 16 × 16            | 32 × 53                   | `CALL KANJI 0 : WIDTH 32`      |  
+
+**Explanation**
+
+1. **Screen Dot Count**: The resolution of the screen in dots (width × height).  
+2. **Kanji Dot Count**: The number of dots used to display a single Kanji character.  
+3. **Half-width Characters**: The number of half-width characters (columns × rows) displayed.  
+4. **CALL KANJI / WIDTH Setting**: BASIC commands to configure the screen mode.  
+
+For **interlaced modes**, the screen alternates between two slightly offset frames, effectively doubling the vertical resolution but introducing flicker.  
+
+### 3.1.6 Kanji Text and Kanji Graphics
+
+Screen modes in Kanji BASIC introduce a more complex challenge. When executing the following commands in BASIC:
+
+```basic
+CALL KANJI 1
+WIDTH 40
+SCREEN 0
+```
+
+The screen switches to the second mode listed in Table 3.2. Interestingly, despite specifying `SCREEN 0`, the VDP (Video Display Processor) operates in a **256 × 212 dot "SCREEN 5"** state. This configuration is referred to as **Kanji Text Mode**.
+
+**Characteristics of Kanji Text Mode**
+
+- **Supported Operations**: 
+  - BASIC program input and editing.
+  - Data input via `INPUT` statements.
+  - Output via `PRINT` statements.
+- **Limitations**: 
+  - Graphics functions such as `LINE` and `PAINT` are not supported.
+
+**Switching to Kanji Graphics Mode**
+
+To use graphical operations in Kanji mode, you must switch to **Kanji Graphics Mode** using commands like:
+
+```basic
+SCREEN 5
+```
+
+In this mode:
+- **Supported Operations**: 
+  - Graphics functions (`LINE`, `PAINT`, etc.) and Kanji output.
+- **Limitations**: 
+  - Kanji input is generally not supported.
+
+**Important Note**
+
+Ensure you clearly differentiate between **Kanji Text Mode** and **Kanji Graphics Mode**. Mistaking the two can lead to issues in program functionality. A visual representation of these screen mode transitions is summarized in **Figure 3.2**.
+
+### 3.1.7 Proper Usage of the Kanji Driver
+
+
+![alt text](images/th/3.2.png)
+**Figure 3.2: Kanji Driver Operation**
+
+The Kanji Driver overturned the perception that MSX's Kanji features were impractical. However, as it was added to BASIC later, it introduces some unexpected challenges:
+
+1. **Initializing the Kanji Driver**
+   - Upon the first execution of `CALL KANJI` after an MSX reset, the Kanji Driver and MSX-JE allocate a work area. This resets BASIC variables and the software stack, potentially causing:
+     ```basic
+     10 A = 1
+     20 CALL KANJIO
+     30 PRINT A
+     ```
+     - First execution outputs `0` (variable `A` reset).
+     - Subsequent executions output `1` correctly.
+
+2. **Impact on GOSUB**
+   - Example:
+     ```basic
+     10 GOSUB 80
+     70 END
+     80 CALL KANJIO
+     90 RETURN
+     ```
+     - This results in the program "forgetting" the return address, causing errors.
+
+3. **Memory Allocation**
+   - Allocating memory for the Kanji Driver reduces available BASIC work area. Programs with large memory demands may fail due to insufficient memory.
+
+4. **Kanji Printing Issues**
+   - The Kanji Driver converts internal Shift-JIS codes to JIS codes for printing with Kanji-compatible printers. However, this interferes with **bit-image printing** (e.g., graphic printing), requiring disabling the conversion:
+     - Write a non-zero value to the `F418H` (RAWPRT) system work area.
+
+**Advanced Programmer Tips**
+
+1. **Kanji Driver Hooks**
+   - Table 3.3 lists hooks used by the Kanji Driver. Modifying these can disrupt the driver's functionality:
+
+     | Address | Name      | Function                              |
+     |---------|-----------|---------------------------------------|
+     | `FDA4H` | `H.CHPU`  | Displays one character on the screen |
+     | `FDA9H` | `H.DSPC`  | Displays the cursor                  |
+     | `FDAEH` | `H.ERAC`  | Erases the cursor                    |
+     | `FDB3H` | `H.DSPF`  | Displays function keys               |
+     | `FDB5H` | `H.ERAF`  | Erases function key display          |
+     | `FDBDH` | `H.TOTE`  | Switches to text mode                |
+     | `FDC2H` | `H.CHGE`  | Reads one character from the keyboard|
+     | `FDDBH` | `H.PINL`  | BASIC editor reads one line          |
+     | `FDE5H` | `H.INLI`  | Reads one line                       |
+     | `FFB6H` | `H.LPTD`  | Writes one character to the printer  |
+
+2. **Register Handling**
+   - Kanji-related BIOS calls destroy the shadow registers and `IX`, `IY` registers. Applications relying on these registers may not function correctly in Kanji mode.
+
+By adhering to these guidelines, you can utilize the Kanji Driver effectively while avoiding common pitfalls.
+
+# 4. V9958 VDP
+
+Sections 1 through 4 of this chapter are derived from the "V9938 MSX-VIDEO Technical Data Book" and "V9958 Specifications," re-edited by the editorial team. Common features between **V9938** and **V9958** are omitted, so refer to resources like the "MSX-Datapack" for further details.
+
+Sections 5 through 7 are re-edited versions of articles from **"MSX Magazine"** published in:
+- December 1988
+- January 1989
+- November 1989
+- December 1989
+- January 1990, under the title "MSX2+ Technical Expedition."
+
+In hardware documentation like the "V9958 Specifications," explanations use the term **"VDP Modes."** However, this book aligns with **MSX Magazine's articles** by using **BASIC screen modes**. The correspondence between VDP modes and BASIC screen modes is shown in **Table 4.1**.
+
+**Table 4.1: Correspondence Between VDP Modes and BASIC Screen Modes**
+
+| **VDP Mode**      | **BASIC Screen Mode**               |
+|--------------------|-------------------------------------|
+| TEXT 1            | `SCREEN 0 : WIDTH 40`              |
+| TEXT 2            | `SCREEN 0 : WIDTH 80`              |
+| MULTI COLOR       | `SCREEN 3`                         |
+| GRAPHIC 1         | `SCREEN 1`                         |
+| GRAPHIC 2         | `SCREEN 2`                         |
+| GRAPHIC 3         | `SCREEN 4`                         |
+| GRAPHIC 4         | `SCREEN 5`                         |
+| GRAPHIC 5         | `SCREEN 6`                         |
+| GRAPHIC 6         | `SCREEN 7`                         |
+| GRAPHIC 7         | `SCREEN 8 (SCREEN 10–12)`          |
+
+## 4.1 V9958 Register List
+
+**Table 4.2: Mode Registers**
+| Register | b7  | b6  | b5  | b4  | b3  | b2  | b1  | b0  | Description                          |
+|----------|------|------|------|------|------|------|------|------|--------------------------------------|
+| R#0      | 0    | DG   | IE2† | IE1  | MS   | M4   | M3   | 0    | Mode 0                              |
+| R#1      | 0    | BL   | IE0  | M1   | M2   | 0    | SI   | MAG  | Mode 1                              |
+| R#2      | A13  | A12  | A11  | A10  | A9   | A8   | A7   | A6   | Pattern name T.B.A.                 |
+| R#3      | A5   | A4   | A3   | A2   | A1   | A0   | 0    | 0    | Color T.B.A. (Low)                  |
+| R#4      | A13  | A12  | A11  | A10  | A9   | A8   | A7   | A6   | Pattern gen. T.B.A.                 |
+| R#5      | A5   | A4   | A3   | A2   | A1   | A0   | 0    | 0    | Sprite attr. T.B.A. (Low)           |
+| R#6      | TC3  | TC2  | TC1  | TC0  | A15  | A14  | A13  | A12  | Sprite pat. gen. T.B.A.             |
+| R#7      | MS†  | LP†  | TP   | CB   | VR*  | SPD  | BW*  | 0    | Text/Back drop color                |
+| R#8      | LN   | 0    | SI*  | 0*   | 0    | A15  | A14  | A13  | Mode 2                              |
+| R#9      | T23  | T22  | T21  | T20  | A15  | A14  | A13  | A12  | Mode 3                              |
+| R#10     | 0    | T3   | T2   | T1   | T0   | 0    | 0    | 0    | Color T.B.A. (High)                 |
+| R#11     | 0    | 0    | 0    | A15  | A14  | A13  | A12  | A11  | Sprite attr. T.B.A. (High)          |
+| R#12     | 0    | 0    | 0    | 0    | 0    | 0    | 0    | 0    | Text/Back color                     |
+| R#13     | T23  | T22  | T21  | T20  | 0    | 0    | 0    | 0    | Blinking period                     |
+| R#14     | VRAM | Access address         |    |     |     |     |   |                                    |
+| R#15     | Status register pointer       |    |     |     |     |   |   |                                    |
+| R#16     | Color palette address         |    |     |     |     |   |   |                                    |
+| R#17     | Control reg. pointer          |    |     |     |     |   |   |                                    |
+| R#18     | Display adjust                |    |     |     |     |   |   |                                    |
+| R#19     | Display offset                |    |     |     |     |   |   |                                    |
+| R#20*    | Color burst 1                 |    |     |     |     |   |   |                                    |
+| R#21*    | Color burst 2                 |    |     |     |     |   |   |                                    |
+| R#22*    | Color burst 3                 |    |     |     |     |   |   |                                    |
+| R#23     | Interrupt line                |    |     |     |     |   |   |                                    |
+| R#25†    | Horizontal scroll (High)      |    |     |     |     |   |   |                                    |
+| R#26†    | Horizontal scroll (Low)       |    |     |     |     |   |   |                                    |
+| R#27†    |                               |    |     |     |     |   |   |                                    |
+
+
+**Notes:**
+
+- Bits labeled as "0" must always be written with a value of `0`.
+- **Editorial Note:** Bits reserved for hardware control must not be modified by standard application programs.
+- Flags present in **V9938** but absent in **V9958** must always be set to `0` when using **V9958**.
+- Registers marked with `t` are newly added in **V9958**. These registers are initialized with a value of `0` to ensure compatibility with the functionality of **V9938**.
+- Register **24** is intentionally omitted (missing register).
+
+
+**Table 4.3: Command Registers**
+
+| Register | b7 | b6 | b5 | b4 | b3 | b2 | b1 | b0 | Description                |
+|----------|----|----|----|----|----|----|----|----|----------------------------|
+| R#32     | SX7 | SX6 | SX5 | SX4 | SX3 | SX2 | SX1 | SX0 | Source X (Low)         |
+| R#33     |  0  |  0  |  0  |  0  | SX10| SX9 | SX8 | SX7 | Source X (High)        |
+| R#34     | SY7 | SY6 | SY5 | SY4 | SY3 | SY2 | SY1 | SY0 | Source Y (Low)         |
+| R#35     |  0  |  0  |  0  |  0  | SY10| SY9 | SY8 | SY7 | Source Y (High)        |
+| R#36     | DX7 | DX6 | DX5 | DX4 | DX3 | DX2 | DX1 | DX0 | Destination X (Low)    |
+| R#37     |  0  |  0  |  0  |  0  | DX10| DX9 | DX8 | DX7 | Destination X (High)   |
+| R#38     | DY7 | DY6 | DY5 | DY4 | DY3 | DY2 | DY1 | DY0 | Destination Y (Low)    |
+| R#39     |  0  |  0  |  0  |  0  | DY10| DY9 | DY8 | DY7 | Destination Y (High)   |
+| R#40     | NX7 | NX6 | NX5 | NX4 | NX3 | NX2 | NX1 | NX0 | Number of dot X (Low)  |
+| R#41     |  0  |  0  |  0  |  0  | NX10| NX9 | NX8 | NX7 | Number of dot X (High) |
+| R#42     | NY7 | NY6 | NY5 | NY4 | NY3 | NY2 | NY1 | NY0 | Number of dot Y (Low)  |
+| R#43     |  0  |  0  |  0  |  0  | NY10| NY9 | NY8 | NY7 | Number of dot Y (High) |
+| R#44     | CH3 | CH2 | CH1 | CH0 | CL3 | CL2 | CL1 | CL0 | Color                  |
+| R#45     | CM3 | CM2 | CM1 | CM0 | L03 | L02 | L01 | L00 | Argument               |
+| R#46     | CM3 | CM2 | CM1 | CM0 | L03 | L02 | L01 | L00 | Command                |
+
+
+**Table 4.4: Status Registers**
+
+| Register | b7   | b6   | b5   | b4   | b3   | b2   | b1   | b0   | Description         |
+|----------|-------|-------|-------|-------|-------|-------|-------|-------|---------------------|
+| S#0      | F     | 5SF   | C     | 5S4   | 5S3   | 5S2   | 5S1   | 5S0   | Status 0           |
+| S#1      | FL↑   | LPST↑| ID4   | ID3   | ID2   | ID1   | ID0   | FH    | Status 1           |
+| S#2      | TR    | VR    | HR    | BD    | 1     | 1     | EO    | CE    | Status 2           |
+| S#3      | X7    | X6    | X5    | X4    | X3    | X2    | X1    | X0    | Column (Low)       |
+| S#4      | 1     | 1     | 1     | 1     | X10   | X9    | X8    | X7    | Column (High)      |
+| S#5      | Y7    | Y6    | Y5    | Y4    | Y3    | Y2    | Y1    | Y0    | Row (Low)          |
+| S#6      | 1     | 1     | 1     | 1     | Y10   | Y9    | Y8    | Y7    | Row (High)         |
+| S#7      | C7    | C6    | C5    | C4    | C3    | C2    | C1    | C0    | Color              |
+| S#8      | BX7   | BX6   | BX5   | BX4   | BX3   | BX2   | BX1   | BX0   | Border X (Low)     |
+| S#9      | 1     | 1     | 1     | 1     | BX10  | BX9   | BX8   | BX7   | Border X (High)    |
+
+† The bits in the table marked as existing in V9938 but not in V9958 have no meaning in V9958, and their values should be ignored.
+V9958's ID is `00010B`.
+
+## 4.2 New Features of V9958
+
+### 4.2.1 Horizontal Scrolling
+
+| Register | b7   | b6   | b5   | b4   | b3   | b2   | b1   | b0   |
+|----------|-------|-------|-------|-------|-------|-------|-------|-------|
+| R#25     | CMD  | VDS   | YAE   | YJK   | WTE   | MSK   | SP2   |       |
+| R#26     | HO7  | HO6   | HO5   | HO4   | HO3   | HO2   | HO1   | HO0   |
+| R#27     | -     | -     | -     | -     | HO2   | HO1   | HO0   |       |
+
+- **HO0 to HO7**: These define the horizontal scroll amount.  
+  - For **SCREEN 6 and 7**, the scroll amount is in units of **2 dots**.  
+  - For other screen modes, the scroll amount is in units of **1 dot**.
+
+- **SP2 (Scroll Page 2)**:
+  - `SP2 = 0` (default): The horizontal screen size is set to **1 page**.
+  - `SP2 = 1`: The horizontal screen size is set to **2 pages**.
+
+- **MSK (Mask)**:
+  - `MSK = 0` (default): The left edge of the screen is **not masked**.
+  - `MSK = 1`:  
+    - For **SCREEN 6 and 7**, the left 16 dots of the screen are masked.  
+    - For other screen modes, the left 8 dots of the screen are masked.  
+    - In both cases, the border color is displayed.
+
+- **HO0 to HO3**: Adjust the display screen to shift leftward by the set value.  
+  - The shift is in units of **8 dots** for standard screens.  
+  - For **SCREEN 6 and 7**, the shift is in units of **16 dots**.
+
+- **SP2 = 0**:  
+  Only one screen's worth of data is displayed with horizontal scrolling.  
+  `HO5` is ignored.
+
+- **SP2 = 1**:  
+  Two screens' worth of data are displayed with horizontal scrolling.  
+  The `A15` bit of the pattern name table's base address must be set to 1.  
+  - Base addresses for the pattern name table:  
+    - `0–31`: Use the configured value with `A15=0`.  
+    - `32–63`: Use the configured value with `A15=1`.  
+  - Base addresses for the pattern generator table and color table remain unchanged regardless of scrolling.
+
+- **HO0 to HO3**:  
+  Adjust the display screen to shift **rightward** by the configured value.  
+  - Shift is in units of **1 dot** for most screens.  
+  - For **SCREEN 6 and 7**, the shift is in units of **2 dots**
+
+![Figure 4.1: Horizontal Scrolling](images/th/4.1.png)
+**Figure 4.1: Horizontal Scrolling**
+
+![Figure 4.2: Horizontal Scrolling in SCREEN 6 and 7](images/th/4.2.png)
+**Figure 4.2: Horizontal Scrolling in SCREEN 6 and 7**
+
+### 4.2.2 Wait Functionality
+
+| Register | b7  | b6  | b5  | b4  | b3  | b2  | b1  | b0  |
+|----------|------|------|------|------|------|------|------|------|
+| R#25     | 0    | CMD  | VDS  | YAE  | YJK  | WTE  | MSK  | SP2  |
+
+- **WTE = 0** (default):  
+  The wait function is **disabled**.
+
+- **WTE = 1**:  
+  The wait function is **enabled**.  
+  When the CPU accesses VRAM, all accesses to V9958 ports are delayed until the VRAM access is complete.  
+  Note: The wait function does not apply to register or color palette access, nor to command data readiness.
+
+### 4.2.3 Commands
+
+| Register | b7  | b6  | b5  | b4  | b3  | b2  | b1  | b0  |
+|----------|------|------|------|------|------|------|------|------|
+| R#25     | 0    | CMD  | VDS  | YAE  | YJK  | WTE  | MSK  | SP2  |
+
+- **CMD = 0** (default):  
+  The command function is enabled **only for SCREEN 5–12**.
+
+- **CMD = 1**:  
+  The command function is enabled for **all screen modes**.  
+  For screen modes other than SCREEN 5–12, it operates as **SCREEN 8**.  
+  Parameters must be configured using SCREEN 8's **X-Y coordinate system**.
+
+
+### 4.2.4 YJK Format Display
+
+| Register | b7  | b6  | b5  | b4  | b3  | b2  | b1  | b0  |
+|----------|------|------|------|------|------|------|------|------|
+| R#25     | 0    | CMD  | VDS  | YAE  | YJK  | WTE  | MSK  | SP2  |
+
+- **YJK = 0** (default):  
+  Data in VRAM is treated as **RGB format** (3, 3, 2 bits each).  
+  Sprite colors remain unchanged.
+
+- **YJK = 1**:  
+  Data in VRAM is treated as **YJK format** and converted into **RGB signals** (5 bits each).  
+  - Analog output is provided via the RGB terminal.  
+  - Sprite colors use the palette.
+
+**YAE Settings**
+
+- **YAE = 0**:  
+  No attribute is present. Data format groups 4 dots together.
+
+| Bits | Description    |
+|------|----------------|
+| C7-C0 | Color data     |
+| YKL  | Low Y value    |
+| YKH  | High Y value   |
+| J    | J component    |
+| K    | K component    |
+
+- **YAE = 1**:  
+  Each dot has its own attribute. Data format groups 4 dots together.
+
+| Bits | Description    |
+|------|----------------|
+| C7-C0 | Color data     |
+| YKL  | Low Y value    |
+| YKH  | High Y value   |
+| J    | J component    |
+| K    | K component    |
+
+**YJK and RGB Conversion Formula (Reference)**
+
+**Conversion Formulas**
+
+- **From YJK to RGB**:
+  - `R = Y + J`
+  - `G = Y - (J + K) / 2`
+  - `B = Y + K`
+
+- **From RGB to YJK**:
+  - `Y = (R + G + B) / 3`
+  - `J = R - Y`
+  - `K = B - Y`
+
+**Note**:  
+- Y values are integers ranging from **0 to 31** (no attributes) or **0 to 30 (even)** (with attributes).  
+- J and K values are integers ranging from **-32 to 31**.  
+- Conversion results are clipped to the range **0–31**.
+
+
+## 4.3 V9958 Deprecated Features
+
+The following features, present in V9938, were removed in V9958:
+- **Composite Video Output**
+- **Mouse/Light Pen Interface**  
+  *(Editor's Note): The MSX mouse does not utilize the V9938's mouse interface functionality, so the removal of this feature has no impact.*
+
+## 4.4 V9958 Hardware Specifications (Changes)
+
+**Changes in Terminal Configuration**
+
+**Table 4.5: Changes in V9958 Terminals**
+
+| Pin | V9958 Function            | Description                                      | Pin | V9938 Function         |
+|-----|---------------------------|--------------------------------------------------|-----|-------------------------|
+| 4   | VRESET                   | Separated input for 3-value logic of HSYNC/CSYNC | 4   | HSYNC/CSYNC (3-value)  |
+| 5   | HSYNC                    | HSYNC output or n flag output                    | 5   | HSYNC I/O              |
+| 6   | CSYNC                    | CSYNC I/O                                        | 6   | CSYNC I/O              |
+| 8   | CPUCLK / VDS             | CPU clock output or VDS output                   | 8   | CPUCLK                 |
+| 21  | AVDD (DAC)               | Analog power supply                              | 21  | VIDEO                  |
+| 26  | WAIT                     | WAIT I/O                                         | 26  | LPS                    |
+| 27  | HRESET                   | Separated input for 3-value logic of HSYNC/CSYNC | 27  | LPD                    |
+
+- **R#25 Bit 5 (`VDS`)**:  
+  - If **VDS flag = 0**, pin 8 functions as **CPUCLK output**.  
+  - If **VDS flag = 1**, pin 8 functions as **VDS output**.
+
+**Electrical Characteristics of V9958**
+
+**Table 4.6: V9958 DC Characteristics**
+
+| Symbol | Parameter                 | Minimum | Typical | Maximum | Unit     |
+|--------|---------------------------|---------|---------|---------|----------|
+| `VIL`  | Low-Level Input Voltage   |         | 0.3     |         | V        |
+| `VIH`  | High-Level Input Voltage  | 2.2     |         |         | V        |
+
+**HSYNC, CSYNC, CPUCLK/VDS, WAIT**
+
+| Symbol | Parameter                 | Test Conditions           | Minimum | Typical | Maximum | Unit |
+|--------|---------------------------|---------------------------|---------|---------|---------|------|
+| `VOL`  | Low-Level Output Voltage  | `IOL = 1.6mA`            |         |         | 0.4     | V    |
+| `VOH`  | High-Level Output Voltage | `IOH = 0.1mA`            | 2.4     |         |         | V    |
+
+**G, R, B Signals**
+
+| Symbol   | Parameter                     | Test Conditions          | Minimum | Typical | Maximum | Unit |
+|----------|-------------------------------|--------------------------|---------|---------|---------|------|
+| `VRGB31` | Maximum Output Voltage        | `RL = 470Ω`             | 2.8     |         |         | V    |
+| `VRGB0`  | Minimum Output Voltage        | `RL = 470Ω`             |         | 2.0     |         | V    |
+| `VP-P`   | Voltage Swing (`VRGB31 - VRGB0`) | `RL = 470Ω`             | 0.8     |         |         | V    |
+| `ΔRGB`   | Output Deviation              | `RL = 470Ω`             |         | 5       |         | %    |
+
+## 4.5 V9958 and MSX2+
+
+The component responsible for controlling the display in MSX computers is called the "Video Display Processor" (VDP). While MSX2 used the "V9938" VDP, MSX2+ and later models upgraded to the "V9958" with additional features. This section introduces the features added in V9958.
+
+### 4.5.1 Screen Modes: A Total of 12 Types
+
+**Screen Modes**: These refer to the display configurations that can be changed using the `SCREEN` command in BASIC. For example:
+- To set the screen to a text mode for writing BASIC programs with 40 columns:
+  ```
+  SCREEN 0 : WIDTH 40
+  ```
+- To draw graphics:
+  ```
+  SCREEN 8
+  ```
+
+Although having many screen modes may seem complex, MSX2+ provides these options for valid reasons.
+
+**Table 4.7: MSX2+ Screen Modes**
+
+| Mode | Display Type       | Resolution        | Colors                  | Description                                                                                   |
+|------|--------------------|-------------------|-------------------------|-----------------------------------------------------------------------------------------------|
+| 0    | Text (1)           | 80 × 24 characters | Foreground and background colors can be specified.                                           |
+| 1    | Text (2)           | 32 × 24 characters | Foreground and background colors can be specified.                                           |
+| 2    | Pattern Table (3)  | 256 × 192 dots    | 16 colors. Two colors can be specified per 8 horizontal dots.                                |
+| 3    | Bitmap (4)         | 64 × 48 dots      | 16 colors.                                                                                    |
+| 4    | Pattern Table      | 256 × 192 dots    | 16 colors. Two colors can be specified per 8 horizontal dots.                                |
+| 5    | Bitmap             | 256 × 212 dots    | 16 colors.                                                                                    |
+| 6    | Bitmap             | 512 × 212 dots    | 4 colors.                                                                                     |
+| 7    | Bitmap             | 512 × 212 dots    | 16 colors.                                                                                    |
+| 8    | Bitmap             | 256 × 212 dots    | 256 colors.                                                                                   |
+| 9    | Blank (5)          | N/A               | Not available in Japanese MSX computers.                                                     |
+| 10   | YJK + RGB          | 256 × 212 dots    | 12,499 colors (refer to text for details).                                                   |
+| 11   | YJK + RGB          | 256 × 212 dots    | 12,499 colors (refer to text for details).                                                   |
+| 12   | YJK                | 256 × 212 dots    | 19,268 colors (refer to text for details).                                                   |
+
+**Notes**:
+1. **Text Mode (1)**: Characters are represented as 6×8 dots, displaying English letters and katakana.  
+2. **Text Mode (2)**: Characters are represented as 8×8 dots, displaying English letters, katakana, and hiragana.  
+3. **Pattern Table**: The screen is created by combining 8×8 dot patterns.  
+4. **Bitmap Mode**: Colors can be displayed without being affected by adjacent colors.
+
+**Reasons for Multiple Screen Modes:**
+
+1. **Speed**: Displaying text in graphics modes can be slow. Text modes are faster and more practical for tasks like programming.
+2. **Memory Usage**: High-resolution and color-rich modes require significantly more memory. For example, a SCREEN 8 display requires 54,272 bytes of memory, limiting how much can fit on a single 2DD disk.
+3. **Compatibility**: As MSX evolved, new modes were added to maintain backward compatibility while supporting advanced features.  
+   - MSX introduced SCREEN 0 to 3 (4 modes).  
+   - MSX2 added SCREEN 4 to 8 for high-resolution graphics.  
+   - MSX2+ added SCREEN 10 to 12 to increase color depth.
+
+This variety ensures the flexibility and compatibility of MSX systems.
+
+**Additional Features**
+
+- **Interlaced Mode**: Doubles vertical resolution but may cause screen flickering.  
+- **Kanji Mode**: Newly introduced in MSX2+ for better handling of Japanese characters.
+
+### 4.5.2 Controlling VDP Registers
+
+The Video Display Processor (VDP) in MSX computers features "registers," similar to the CPU, for controlling screen output. These registers can be manipulated by the CPU via I/O ports. The VDP registers are categorized into:
+
+1. **Control Registers**: Used by the CPU to control the VDP.
+2. **Status Registers**: Used by the CPU to monitor the VDP's status.
+3. **Command Registers**: These enable the execution of advanced VDP commands but are not covered in this guide as they are not utilized in the provided programs.
+
+**VDP I/O Ports**
+
+The VDP is accessed through I/O ports, typically ranging from 98H to 9BH. However, the exact port addresses depend on the contents of ROM addresses 6 and 7, as shown in **Table 4.8**.
+
+**Table 4.8: VDP I/O Ports**
+
+| Port Name      | R/W  | I/O Address                 | Function                        |
+|----------------|-------|-----------------------------|----------------------------------|
+| Port 0 (Read)  | Read  | ROM address 6 content       | VRAM Read                       |
+| Port 1 (Read)  | Read  | ROM address 6 content + 1   | Status Register                 |
+| Port 0 (Write) | Write | ROM address 7 content       | VRAM Write                      |
+| Port 1 (Write) | Write | ROM address 7 content + 1   | Control Register                |
+| Port 2 (Write) | Write | ROM address 7 content + 2   | Palette Register                |
+| Port 3 (Write) | Write | ROM address 7 content + 3   | Indirect Registers              |
+
+**Setting Control Registers**
+
+1. **Writing Values**:
+   - To set a value, first write the data to **Port 1**.
+   - Then write the register number plus 128 to the same port.
+   - This must be done consecutively to avoid VDP confusion if an interrupt occurs between the two writes. Use the `DI` command to disable interrupts before writing.
+
+2. **Reading Specific Bits**:
+   - Control registers are write-only, so their values cannot be read back directly.
+   - To change specific bits, store the register values in a system work area (RAM). Modify the value in RAM, then write the updated value to both the register and the RAM location.
+
+**Example Work Area:**
+- RAM location F3E0H stores the value for Control Register 1. Modify the value in RAM, then write the new value to Control Register 1.
+
+**Reading Status Registers**
+
+To read status register values:
+1. Write the status register number to Control Register 15.
+2. Read the value from **Port 1**.
+3. Reset Control Register 15 to 0.
+4. Perform this entire process with interrupts disabled.
+
+**Table 4.9: Control Register Save Locations**
+
+| Register No. | Function     | Save Address | Label    |
+|--------------|--------------|--------------|----------|
+| 0            | RG0 Function | F3DFH        | RG0SAV   |
+| 7            | RG7 Function | F3E6H        | RG7SAV   |
+| 8            | RG8 Function | FFE7H        | RG8SAV   |
+| 23           | RG23 Function| FFF6H        | RG23SA   |
+| 25           | RG25 Function| FFFAH        | RG25SA   |
+| 26           | RG26 Function| FFFBH        | RG26SA   |
+| 27           | RG27 Function| FFFCH        | RG27SA   |
+
+**Additional System Work Areas**
+
+**Table 4.10: General System Work Areas**
+
+| Address | Label      | Description                                   |
+|---------|------------|-----------------------------------------------|
+| F341H   | RAMAD0     | Slot number for Page 0 RAM                   |
+| F342H   | RAMAD1     | Slot number for Page 1 RAM                   |
+| F343H   | RAMAD2     | Slot number for Page 2 RAM                   |
+| F344H   | RAMAD3     | Slot number for Page 3 RAM                   |
+| FAF5H   | DPPAGE     | Display page number                          |
+| FAF6H   | ACPAGE     | Active page number                           |
+| FD9AH   | H.KEYI     | Interrupt hook                               |
+| FD9FH   | H.TIMI     | Timer interrupt hook                         |
+
+**Table 4.11: MSX2+ System Work Areas**
+
+| Address  | Label     | Description                                      |
+|----------|-----------|--------------------------------------------------|
+| OFAFCH   | MODE      | Various mode settings (see Table 4.12).          |
+| OFAFDH   | NORUSE    | Kanji Driver Work Area                           |
+| OFDOAH   | SLTWRK+1  | Kanji Driver Work Area                           |
+| OFDOFH   | SLTWRK+6  | Kanji Driver Work Area                           |
+| OFFFAH   | RG25SA    | VDP Register Save                                |
+| OFFFBH   | RG26SA    | VDP Register Save                                |
+| OFFFCH   | RG27SA    | VDP Register Save                                |
+
+**Table 4.12: Details of OFAFCH (MODE)**
+
+| Bit | Description                                               |
+|-----|-----------------------------------------------------------|
+| b7  | 1: Katakana, 0: Hiragana                                 |
+| b6  | 1: Second-level Kanji ROM exists                         |
+| b5  | 1: SCREEN 11, 0: SCREEN 10                               |
+| b4  | Used internally                                          |
+| b3  | 1: SCREEN 0–3 VRAM address mask at 3FFFH                |
+| b2  | VRAM capacity (00: 16KB, 01: 64KB, 10: 128KB)            |
+| b0  | 1: Enable Roman character-to-Kana conversion            |
+
+**Note**: While the ROM BIOS provides equivalent subroutines for most of these operations, they may be slower as they involve calling the sub-ROM. Custom routines may be used for time-sensitive processes like scanline interrupts.
